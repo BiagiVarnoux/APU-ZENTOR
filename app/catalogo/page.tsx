@@ -94,32 +94,43 @@ export default function CatalogoPage() {
       return
     }
     setSaving(true)
-    const payload = {
-      nombre: form.nombre.trim(),
-      unidad: form.unidad.trim(),
-      precio: parseFloat(form.precio),
-      categoria_id: form.categoria_id || null,
-      rendimiento_default: form.rendimiento_default ? parseFloat(form.rendimiento_default) : null,
-      rendimiento_descripcion: form.rendimiento_descripcion.trim() || null,
-      notas: form.notas.trim() || null,
+    setError('')
+    try {
+      const payload = {
+        nombre: form.nombre.trim(),
+        unidad: form.unidad.trim(),
+        precio: parseFloat(form.precio),
+        categoria_id: form.categoria_id || null,
+        rendimiento_default: form.rendimiento_default ? parseFloat(form.rendimiento_default) : null,
+        rendimiento_descripcion: form.rendimiento_descripcion.trim() || null,
+        notas: form.notas.trim() || null,
+      }
+      let recursoId = editing?.id
+      if (editing) {
+        const { error } = await supabase.from('recursos').update(payload).eq('id', editing.id)
+        if (error) throw error
+      } else {
+        const { data, error } = await supabase.from('recursos').insert(payload).select().single()
+        if (error) throw error
+        recursoId = data?.id
+      }
+      if (recursoId) {
+        await supabase.from('rendimiento_escenarios').delete().eq('recurso_id', recursoId)
+        const toInsert = escenarios
+          .filter(e => e.nombre && e.rendimiento)
+          .map(e => ({ recurso_id: recursoId!, nombre: e.nombre, rendimiento: e.rendimiento, descripcion: e.descripcion }))
+        if (toInsert.length) {
+          const { error } = await supabase.from('rendimiento_escenarios').insert(toInsert)
+          if (error) throw error
+        }
+      }
+      setShowForm(false)
+      load()
+    } catch (err: any) {
+      setError(err?.message || 'Error al guardar. Revisa la consola del navegador.')
+    } finally {
+      setSaving(false)
     }
-    let recursoId = editing?.id
-    if (editing) {
-      await supabase.from('recursos').update(payload).eq('id', editing.id)
-    } else {
-      const { data } = await supabase.from('recursos').insert(payload).select().single()
-      recursoId = data?.id
-    }
-    if (recursoId) {
-      await supabase.from('rendimiento_escenarios').delete().eq('recurso_id', recursoId)
-      const toInsert = escenarios
-        .filter(e => e.nombre && e.rendimiento)
-        .map(e => ({ recurso_id: recursoId!, nombre: e.nombre, rendimiento: e.rendimiento, descripcion: e.descripcion }))
-      if (toInsert.length) await supabase.from('rendimiento_escenarios').insert(toInsert)
-    }
-    setSaving(false)
-    setShowForm(false)
-    load()
   }
 
   async function confirmDelete() {
